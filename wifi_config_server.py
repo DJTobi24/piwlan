@@ -239,5 +239,29 @@ def status():
 
 if __name__ == '__main__':
     check_sudo()
-    logger.info("WLAN Konfigurations-Server gestartet")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    
+    # Port aus Umgebungsvariable oder Standard
+    port = int(os.environ.get('WIFI_CONFIG_PORT', 5000))
+    
+    # Prüfe ob Port bereits belegt ist
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex(('127.0.0.1', port))
+    sock.close()
+    
+    if result == 0:
+        logger.error(f"Port {port} ist bereits belegt!")
+        logger.error("Beende alte Prozesse mit: sudo pkill -f wifi_config_server.py")
+        logger.error(f"Oder verwende einen anderen Port: WIFI_CONFIG_PORT=8080 python3 {sys.argv[0]}")
+        sys.exit(1)
+    
+    logger.info(f"WLAN Konfigurations-Server gestartet auf Port {port}")
+    
+    try:
+        app.run(host='0.0.0.0', port=port, debug=False)
+    except OSError as e:
+        if e.errno == 98:  # Address already in use
+            logger.error(f"Port {port} ist bereits belegt! Verwende einen anderen Port.")
+            sys.exit(1)
+        else:
+            raise
