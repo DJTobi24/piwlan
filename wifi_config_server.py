@@ -219,6 +219,11 @@ def connect():
             'error': str(e)
         }), 500
 
+@app.route('/api/redirect', methods=['GET'])
+def redirect_to_fotobox():
+    """Leitet zur Fotobox weiter"""
+    return redirect(FOTOBOX_URL)
+
 @app.route('/api/status', methods=['GET'])
 def status():
     """API-Endpunkt zum Abrufen des Verbindungsstatus"""
