@@ -29,8 +29,8 @@ A modern, touch-friendly WiFi configuration interface for Raspberry Pi-based pho
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/rpi-fotobox-wifi-config.git
-cd rpi-fotobox-wifi-config
+git clone https://github.com/DJTobi24/piwlan.git
+cd piwla
 ```
 
 ### 2. Install Dependencies
