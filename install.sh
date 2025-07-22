@@ -9,7 +9,14 @@ set -e  # Exit on error
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Default configuration values
+DEFAULT_WIFI_CONFIG_PORT=5000
+DEFAULT_FOTOBOX_URL="http://localhost:3353"
+WIFI_CONFIG_PORT=""
+FOTOBOX_URL=""
 
 # Functions
 print_status() {
@@ -24,6 +31,77 @@ print_warning() {
     echo -e "${YELLOW}[*]${NC} $1"
 }
 
+print_info() {
+    echo -e "${BLUE}[i]${NC} $1"
+}
+
+# Function to validate port number
+validate_port() {
+    local port=$1
+    if [[ $port =~ ^[0-9]+$ ]] && [ $port -ge 1 ] && [ $port -le 65535 ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to validate URL
+validate_url() {
+    local url=$1
+    if [[ $url =~ ^https?://[a-zA-Z0-9.-]+:[0-9]+(/.*)?$ ]] || [[ $url =~ ^https?://[a-zA-Z0-9.-]+(/.*)?$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Interactive configuration
+configure_installation() {
+    echo ""
+    print_info "=== Konfiguration der Installation ==="
+    echo ""
+    
+    # WiFi Config Port
+    while true; do
+        read -p "Port für WiFi-Konfiguration (Standard: $DEFAULT_WIFI_CONFIG_PORT): " input_port
+        if [ -z "$input_port" ]; then
+            WIFI_CONFIG_PORT=$DEFAULT_WIFI_CONFIG_PORT
+            break
+        elif validate_port "$input_port"; then
+            WIFI_CONFIG_PORT=$input_port
+            break
+        else
+            print_error "Ungültiger Port. Bitte eine Zahl zwischen 1 und 65535 eingeben."
+        fi
+    done
+    
+    # Fotobox URL
+    while true; do
+        read -p "URL der Fotobox-Oberfläche (Standard: $DEFAULT_FOTOBOX_URL): " input_url
+        if [ -z "$input_url" ]; then
+            FOTOBOX_URL=$DEFAULT_FOTOBOX_URL
+            break
+        elif validate_url "$input_url"; then
+            FOTOBOX_URL=$input_url
+            break
+        else
+            print_error "Ungültige URL. Format: http://host:port oder https://host:port"
+        fi
+    done
+    
+    echo ""
+    print_info "Konfiguration:"
+    print_info "  WiFi-Config Port: $WIFI_CONFIG_PORT"
+    print_info "  Fotobox URL: $FOTOBOX_URL"
+    echo ""
+    
+    read -p "Sind diese Einstellungen korrekt? (j/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Jj]$ ]]; then
+        configure_installation
+    fi
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    print_error "This script must be run as root (use sudo)"
@@ -31,6 +109,9 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 print_status "Starting Raspberry Pi Fotobox WiFi Configuration installation..."
+
+# Run interactive configuration
+configure_installation
 
 # Update system
 print_status "Updating system packages..."
@@ -72,6 +153,14 @@ pip3 install flask flask-cors
 print_status "Creating directory structure..."
 mkdir -p /home/pi/wifi-config
 
+# Update wifi_config_server.py with custom ports
+print_status "Configuring WiFi server with custom settings..."
+sed -i "s|FOTOBOX_URL = 'http://localhost:3353'|FOTOBOX_URL = '$FOTOBOX_URL'|g" wifi_config_server.py
+sed -i "s|app.run(host='0.0.0.0', port=5000|app.run(host='0.0.0.0', port=$WIFI_CONFIG_PORT|g" wifi_config_server.py
+
+# Update check_connection.sh with custom URL
+sed -i "s|http://localhost:3353|$FOTOBOX_URL|g" check_connection.sh
+
 # Copy files
 print_status "Copying configuration files..."
 cp index.html /home/pi/wifi-config/
@@ -83,6 +172,10 @@ print_status "Setting file permissions..."
 chmod +x /home/pi/wifi-config/wifi_config_server.py
 chmod +x /home/pi/wifi-config/check_connection.sh
 chown -R pi:pi /home/pi/wifi-config
+
+# Update service file with custom port
+print_status "Updating service configuration..."
+sed -i "s|http://localhost:5000|http://localhost:$WIFI_CONFIG_PORT|g" wifi-config.service
 
 # Create systemd service
 print_status "Creating systemd service..."
@@ -104,7 +197,7 @@ if [ -f "$AUTOSTART_FILE" ]; then
     print_warning "Backed up existing autostart configuration"
 fi
 
-# Create new autostart configuration
+# Create new autostart configuration with custom port
 cat > "$AUTOSTART_FILE" << EOF
 @lxpanel --profile LXDE-pi
 @pcmanfm --desktop --profile LXDE-pi
@@ -116,7 +209,7 @@ cat > "$AUTOSTART_FILE" << EOF
 @xset s noblank
 
 # Start WiFi configuration in kiosk mode
-@chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=604800 http://localhost:5000
+@chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=604800 http://localhost:$WIFI_CONFIG_PORT
 
 # Check connection after startup
 @/home/pi/wifi-config/check_connection.sh
@@ -133,8 +226,12 @@ systemctl start wifi-config.service
 # Configure firewall (if ufw is installed)
 if command -v ufw &> /dev/null; then
     print_status "Configuring firewall..."
-    ufw allow 5000/tcp comment 'WiFi Config'
-    ufw allow 3353/tcp comment 'Fotobox'
+    ufw allow $WIFI_CONFIG_PORT/tcp comment 'WiFi Config'
+    # Extract port from FOTOBOX_URL
+    FOTOBOX_PORT=$(echo $FOTOBOX_URL | sed -e 's/.*://g' -e 's/\/.*//g')
+    if validate_port "$FOTOBOX_PORT"; then
+        ufw allow $FOTOBOX_PORT/tcp comment 'Fotobox'
+    fi
     ufw --force enable
 fi
 
@@ -152,16 +249,38 @@ cat > /etc/logrotate.d/wifi-config << EOF
 }
 EOF
 
+# Create configuration summary file
+print_status "Creating configuration summary..."
+cat > /home/pi/wifi-config/config.txt << EOF
+WiFi Configuration Settings
+===========================
+WiFi Config Port: $WIFI_CONFIG_PORT
+WiFi Config URL: http://localhost:$WIFI_CONFIG_PORT
+Fotobox URL: $FOTOBOX_URL
+
+Service Commands:
+- Status: sudo systemctl status wifi-config.service
+- Restart: sudo systemctl restart wifi-config.service
+- Logs: sudo journalctl -u wifi-config.service -f
+EOF
+
+chown pi:pi /home/pi/wifi-config/config.txt
+
 # Check service status
 print_status "Checking service status..."
 if systemctl is-active --quiet wifi-config.service; then
     print_status "WiFi configuration service is running successfully!"
+    echo ""
+    print_info "=== Installation erfolgreich abgeschlossen! ==="
+    print_info "WiFi-Konfiguration erreichbar unter: http://localhost:$WIFI_CONFIG_PORT"
+    print_info "Fotobox wird weitergeleitet zu: $FOTOBOX_URL"
+    print_info "Konfiguration gespeichert in: /home/pi/wifi-config/config.txt"
 else
     print_error "Service failed to start. Check logs with: sudo journalctl -u wifi-config.service"
     exit 1
 fi
 
-print_status "Installation completed successfully!"
+echo ""
 print_warning "Please reboot your Raspberry Pi to start using the WiFi configuration interface"
 print_warning "Run: sudo reboot"
 
