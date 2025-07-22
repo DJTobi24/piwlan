@@ -1,0 +1,24 @@
+[Unit]
+Description=WiFi Configuration Web Interface for Raspberry Pi Fotobox
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/wifi-config
+ExecStart=/usr/bin/python3 /home/pi/wifi-config/wifi_config_server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/wifi-config.log
+StandardError=append:/var/log/wifi-config.log
+
+# Security settings
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/wpa_supplicant /var/log
+
+[Install]
+WantedBy=multi-user.target
