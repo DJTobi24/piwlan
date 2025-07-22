@@ -37,9 +37,32 @@ print_status "Updating system packages..."
 apt update
 apt upgrade -y
 
+# Fix any broken packages first
+print_status "Fixing package dependencies..."
+apt --fix-broken install -y
+apt update
+
 # Install dependencies
 print_status "Installing required packages..."
-apt install -y python3-pip python3-flask python3-venv chromium-browser
+apt install -y python3-pip python3-flask python3-venv
+
+# Try to install Chromium, but don't fail if it's already installed
+print_status "Installing Chromium browser..."
+apt install -y chromium-browser chromium-codecs-ffmpeg || {
+    print_warning "Chromium installation failed, trying alternative method..."
+    # Try installing dependencies first
+    apt install -y libraspberrypi0 || true
+    apt install -y chromium-codecs-ffmpeg-extra || apt install -y chromium-codecs-ffmpeg || true
+    apt install -y chromium-browser || {
+        print_warning "Chromium might already be installed or needs manual installation"
+        # Check if Chromium is already available
+        if command -v chromium-browser &> /dev/null; then
+            print_status "Chromium browser is already installed"
+        else
+            print_error "Please install Chromium browser manually"
+        fi
+    }
+}
 
 # Install Python packages
 print_status "Installing Python dependencies..."
