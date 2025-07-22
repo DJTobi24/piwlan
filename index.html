@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fotobox WLAN Konfiguration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .status-message {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status-message.error {
+            background: #fff0f0;
+            border-left-color: #e74c3c;
+            color: #c0392b;
+        }
+
+        .status-message.success {
+            background: #f0fff4;
+            border-left-color: #27ae60;
+            color: #27ae60;
+        }
+
+        .network-list {
+            margin-bottom: 20px;
+        }
+
+        .network-item {
+            background: #f8f9fa;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .network-item:hover {
+            background: #f0f4ff;
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+
+        .network-item.selected {
+            background: #f0f4ff;
+            border-color: #667eea;
+        }
+
+        .network-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .signal-icon {
+            width: 24px;
+            height: 24px;
+            fill: #667eea;
+        }
+
+        .network-name {
+            font-size: 18px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .signal-strength {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .password-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .password-section.show {
+            display: block;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .password-input-wrapper {
+            position: relative;
+        }
+
+        .password-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            transition: border-color 0.3s ease;
+            background: #fff;
+        }
+
+        .password-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .toggle-password svg {
+            width: 24px;
+            height: 24px;
+            fill: #666;
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .connect-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .connect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-networks {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading-networks .spinner {
+            border-color: rgba(102, 126, 234, 0.3);
+            border-top-color: #667eea;
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 20px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .network-item {
+                padding: 15px;
+            }
+            
+            .network-name {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fotobox WLAN Setup</h1>
+        <p class="subtitle">Wähle ein WLAN-Netzwerk aus</p>
+        
+        <div id="statusMessage" class="status-message"></div>
+        
+        <div id="networkList" class="network-list">
+            <div class="loading-networks">
+                <div class="spinner"></div>
+                <p>Suche nach verfügbaren Netzwerken...</p>
+            </div>
+        </div>
+        
+        <div id="passwordSection" class="password-section">
+            <div class="input-group">
+                <label for="password">WLAN-Passwort</label>
+                <div class="password-input-wrapper">
+                    <input 
+                        type="password" 
+                        id="password" 
+                        class="password-input" 
+                        placeholder="Passwort eingeben"
+                        autocomplete="off"
+                    >
+                    <button type="button" class="toggle-password" onclick="togglePassword()">
+                        <svg id="eyeIcon" viewBox="0 0 24 24">
+                            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <button id="connectBtn" class="connect-btn" onclick="connectToNetwork()">
+                Verbinden
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let selectedNetwork = null;
+        let networks = [];
+        let connectAttempts = 0;
+
+        // Netzwerkliste vom Backend abrufen
+        async function getNetworks() {
+            try {
+                const response = await fetch('/api/networks');
+                const data = await response.json();
+                
+                if (data.success) {
+                    return data.networks;
+                } else {
+                    throw new Error(data.error || 'Fehler beim Laden der Netzwerke');
+                }
+            } catch (error) {
+                console.error('Fehler:', error);
+                throw error;
+            }
+        }
+
+        function getSignalStrength(signal) {
+            if (signal > -50) return 'Sehr gut';
+            if (signal > -60) return 'Gut';
+            if (signal > -70) return 'Mittel';
+            return 'Schwach';
+        }
+
+        function getSignalBars(signal) {
+            if (signal > -50) return 4;
+            if (signal > -60) return 3;
+            if (signal > -70) return 2;
+            return 1;
+        }
+
+        async function loadNetworks() {
+            try {
+                networks = await getNetworks();
+                displayNetworks();
+            } catch (error) {
+                showStatus('Fehler beim Laden der Netzwerke', 'error');
+            }
+        }
+
+        function displayNetworks() {
+            const networkList = document.getElementById('networkList');
+            networkList.innerHTML = '';
+            
+            networks.forEach((network, index) => {
+                const networkItem = document.createElement('div');
+                networkItem.className = 'network-item';
+                networkItem.onclick = () => selectNetwork(network, index);
+                
+                networkItem.innerHTML = `
+                    <div class="network-info">
+                        <svg class="signal-icon" viewBox="0 0 24 24">
+                            <path d="M1 9l2-2v8h18V7l2 2V1H1v8zm19-4v6H4V5h16z" opacity="${getSignalBars(network.signal) >= 1 ? '1' : '0.3'}"/>
+                            <path d="M5 14h14l-1 1H6l-1-1z" opacity="${getSignalBars(network.signal) >= 2 ? '1' : '0.3'}"/>
+                            <path d="M8 17h8l-1 1H9l-1-1z" opacity="${getSignalBars(network.signal) >= 3 ? '1' : '0.3'}"/>
+                            <path d="M11 20h2l-1 1-1-1z" opacity="${getSignalBars(network.signal) >= 4 ? '1' : '0.3'}"/>
+                        </svg>
+                        <div>
+                            <div class="network-name">${network.ssid}</div>
+                            <div class="signal-strength">${getSignalStrength(network.signal)} • ${network.security}</div>
+                        </div>
+                    </div>
+                `;
+                
+                networkList.appendChild(networkItem);
+            });
+        }
+
+        function selectNetwork(network, index) {
+            selectedNetwork = network;
+            
+            // Alle Netzwerke deselektieren
+            document.querySelectorAll('.network-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Ausgewähltes Netzwerk markieren
+            document.querySelectorAll('.network-item')[index].classList.add('selected');
+            
+            // Passwort-Sektion anzeigen (außer bei offenen Netzwerken)
+            const passwordSection = document.getElementById('passwordSection');
+            if (network.security !== 'Open') {
+                passwordSection.classList.add('show');
+                document.getElementById('password').focus();
+            } else {
+                passwordSection.classList.remove('show');
+                connectToNetwork();
+            }
+            
+            // Status zurücksetzen
+            hideStatus();
+        }
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eyeIcon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.innerHTML = '<path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>';
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.innerHTML = '<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>';
+            }
+        }
+
+        async function connectToNetwork() {
+            if (!selectedNetwork) return;
+            
+            const password = document.getElementById('password').value;
+            const connectBtn = document.getElementById('connectBtn');
+            
+            // Button deaktivieren und Ladeanimation zeigen
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span class="spinner"></span>Verbinde...';
+            
+            try {
+                const response = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ssid: selectedNetwork.ssid,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus('Erfolgreich verbunden! Weiterleitung zur Fotobox...', 'success');
+                    setTimeout(() => {
+                        window.location.href = data.redirect || 'http://localhost:3353';
+                    }, 2000);
+                } else {
+                    throw new Error(data.error || 'Verbindung fehlgeschlagen');
+                }
+            } catch (error) {
+                connectAttempts++;
+                showStatus(error.message || 'Verbindung fehlgeschlagen. Bitte überprüfe das Passwort.', 'error');
+                
+                // Button wieder aktivieren
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = 'Verbinden';
+                
+                // Passwort-Feld leeren und fokussieren
+                if (connectAttempts > 1) {
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            }
+        }
+
+        // Funktion wurde entfernt - nicht mehr benötigt
+
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = `status-message ${type}`;
+            statusElement.style.display = 'block';
+        }
+
+        function hideStatus() {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.style.display = 'none';
+        }
+
+        // Enter-Taste zum Verbinden
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    connectToNetwork();
+                }
+            });
+            
+            // Netzwerke laden
+            loadNetworks();
+        });
+    </script>
+</body>
+</html>
