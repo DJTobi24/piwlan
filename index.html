@@ -290,6 +290,8 @@
         let networks = [];
         let connectAttempts = 0;
 
+        let currentConnection = null;
+
         // Netzwerkliste vom Backend abrufen
         async function getNetworks() {
             try {
@@ -297,6 +299,7 @@
                 const data = await response.json();
                 
                 if (data.success) {
+                    currentConnection = data.current;
                     return data.networks;
                 } else {
                     throw new Error(data.error || 'Fehler beim Laden der Netzwerke');
@@ -323,11 +326,88 @@
 
         async function loadNetworks() {
             try {
+                // Prüfe zuerst den Verbindungsstatus
+                const statusResponse = await fetch('/api/status');
+                const statusData = await statusResponse.json();
+                
+                if (statusData.success && statusData.connected && statusData.ssid) {
+                    // Bereits verbunden - zeige Verbindungsstatus und Button zur Fotobox
+                    showConnectedStatus(statusData.ssid);
+                    return;
+                }
+                
+                // Nicht verbunden - lade Netzwerkliste
                 networks = await getNetworks();
                 displayNetworks();
             } catch (error) {
                 showStatus('Fehler beim Laden der Netzwerke', 'error');
             }
+        }
+
+        function showConnectedStatus(ssid) {
+            const networkList = document.getElementById('networkList');
+            const passwordSection = document.getElementById('passwordSection');
+            const subtitle = document.querySelector('.subtitle');
+            
+            subtitle.textContent = 'WLAN bereits verbunden';
+            passwordSection.style.display = 'none';
+            
+            networkList.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px;">
+                    <svg style="width: 60px; height: 60px; fill: #27ae60; margin-bottom: 20px;" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                    </svg>
+                    <h2 style="color: #27ae60; margin-bottom: 10px;">Verbunden mit "${ssid}"</h2>
+                    <p style="color: #666; margin-bottom: 30px;">Die Internetverbindung ist aktiv</p>
+                    
+                    <button onclick="goToFotobox()" style="
+                        background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+                        color: white;
+                        border: none;
+                        padding: 18px 40px;
+                        font-size: 18px;
+                        font-weight: 600;
+                        border-radius: 10px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        margin-bottom: 20px;
+                    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 20px rgba(39, 174, 96, 0.3)'" 
+                       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                        Zur Fotobox →
+                    </button>
+                    
+                    <br>
+                    
+                    <button onclick="showNetworkList()" style="
+                        background: none;
+                        color: #667eea;
+                        border: 2px solid #667eea;
+                        padding: 12px 30px;
+                        font-size: 16px;
+                        font-weight: 500;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                    " onmouseover="this.style.background='#667eea'; this.style.color='white'" 
+                       onmouseout="this.style.background='none'; this.style.color='#667eea'">
+                        Anderes WLAN wählen
+                    </button>
+                </div>
+            `;
+        }
+
+        function goToFotobox() {
+            showStatus('Weiterleitung zur Fotobox...', 'success');
+            setTimeout(() => {
+                window.location.href = '/api/redirect';
+            }, 500);
+        }
+
+        function showNetworkList() {
+            const subtitle = document.querySelector('.subtitle');
+            subtitle.textContent = 'Wähle ein WLAN-Netzwerk aus';
+            hideStatus();
+            loadNetworks();
         }
 
         function displayNetworks() {
