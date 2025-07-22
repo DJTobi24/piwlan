@@ -3,6 +3,9 @@
 # WiFi Connection Check Script
 # Automatically redirects to photo booth if internet is available
 
+# Default URL - will be replaced by install script
+FOTOBOX_URL="http://localhost:3353"
+
 # Wait for system to fully start
 sleep 10
 
@@ -18,7 +21,7 @@ if ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1; then
     
     # Start chromium with photo booth URL
     export DISPLAY=:0
-    chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=604800 http://localhost:3353 &
+    chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=604800 $FOTOBOX_URL &
 else
     echo "No internet connection - staying on WiFi configuration"
     # The WiFi configuration page is already loaded by autostart
