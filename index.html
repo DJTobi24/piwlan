@@ -324,19 +324,21 @@
             return 1;
         }
 
-        async function loadNetworks() {
+        async function loadNetworks(forceShowList = false) {
             try {
-                // Prüfe zuerst den Verbindungsstatus
-                const statusResponse = await fetch('/api/status');
-                const statusData = await statusResponse.json();
-                
-                if (statusData.success && statusData.connected && statusData.ssid) {
-                    // Bereits verbunden - zeige Verbindungsstatus und Button zur Fotobox
-                    showConnectedStatus(statusData.ssid);
-                    return;
+                // Prüfe zuerst den Verbindungsstatus (außer wenn explizit die Liste angefordert wird)
+                if (!forceShowList) {
+                    const statusResponse = await fetch('/api/status');
+                    const statusData = await statusResponse.json();
+                    
+                    if (statusData.success && statusData.connected && statusData.ssid) {
+                        // Bereits verbunden - zeige Verbindungsstatus und Button zur Fotobox
+                        showConnectedStatus(statusData.ssid);
+                        return;
+                    }
                 }
                 
-                // Nicht verbunden - lade Netzwerkliste
+                // Nicht verbunden oder Liste explizit angefordert - lade Netzwerkliste
                 networks = await getNetworks();
                 displayNetworks();
             } catch (error) {
@@ -407,16 +409,40 @@
             const subtitle = document.querySelector('.subtitle');
             subtitle.textContent = 'Wähle ein WLAN-Netzwerk aus';
             hideStatus();
-            loadNetworks();
+            
+            // Zeige Ladeanimation
+            const networkList = document.getElementById('networkList');
+            networkList.innerHTML = `
+                <div class="loading-networks">
+                    <div class="spinner"></div>
+                    <p>Suche nach verfügbaren Netzwerken...</p>
+                </div>
+            `;
+            
+            // Lade Netzwerkliste und erzwinge die Anzeige
+            loadNetworks(true);
         }
 
         function displayNetworks() {
             const networkList = document.getElementById('networkList');
             networkList.innerHTML = '';
             
+            // Zeige aktuell verbundenes Netzwerk oben an (falls vorhanden)
+            if (currentConnection) {
+                const connectedHeader = document.createElement('div');
+                connectedHeader.style.cssText = 'background: #f0fff4; border: 2px solid #27ae60; border-radius: 10px; padding: 15px; margin-bottom: 20px; text-align: center; color: #27ae60;';
+                connectedHeader.innerHTML = `
+                    <strong>Aktuell verbunden mit: ${currentConnection}</strong>
+                `;
+                networkList.appendChild(connectedHeader);
+            }
+            
             networks.forEach((network, index) => {
                 const networkItem = document.createElement('div');
                 networkItem.className = 'network-item';
+                if (network.ssid === currentConnection) {
+                    networkItem.className += ' selected';
+                }
                 networkItem.onclick = () => selectNetwork(network, index);
                 
                 networkItem.innerHTML = `
@@ -428,7 +454,7 @@
                             <path d="M11 20h2l-1 1-1-1z" opacity="${getSignalBars(network.signal) >= 4 ? '1' : '0.3'}"/>
                         </svg>
                         <div>
-                            <div class="network-name">${network.ssid}</div>
+                            <div class="network-name">${network.ssid}${network.ssid === currentConnection ? ' (Verbunden)' : ''}</div>
                             <div class="signal-strength">${getSignalStrength(network.signal)} • ${network.security}</div>
                         </div>
                     </div>
