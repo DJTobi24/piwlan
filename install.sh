@@ -18,6 +18,24 @@ DEFAULT_FOTOBOX_URL="http://localhost:3353"
 WIFI_CONFIG_PORT=""
 FOTOBOX_URL=""
 
+# Detect current user (fallback to pi if not exists)
+if id "pi" &>/dev/null; then
+    INSTALL_USER="pi"
+    USER_HOME="/home/pi"
+else
+    # Use the user who called sudo, or current user if not using sudo
+    if [ -n "$SUDO_USER" ]; then
+        INSTALL_USER="$SUDO_USER"
+    else
+        INSTALL_USER="$(whoami)"
+    fi
+    USER_HOME=$(eval echo ~$INSTALL_USER)
+fi
+
+# Installation directories
+INSTALL_DIR="$USER_HOME/wifi-config"
+CONFIG_DIR="$USER_HOME/.config/lxsession/LXDE-pi"
+
 # Functions
 print_status() {
     echo -e "${GREEN}[+]${NC} $1"
@@ -55,10 +73,105 @@ validate_url() {
     fi
 }
 
+# Function to check and install packages
+install_required_packages() {
+    print_status "Checking and installing required packages..."
+    
+    # List of required packages
+    local packages=(
+        "python3"
+        "python3-pip"
+        "python3-flask"
+        "python3-venv"
+        "git"
+        "wget"
+        "curl"
+        "net-tools"
+        "wireless-tools"
+        "wpasupplicant"
+        "dhcpcd5"
+        "systemd"
+        "lsof"
+    )
+    
+    # Check which packages are missing
+    local missing_packages=()
+    for pkg in "${packages[@]}"; do
+        if ! dpkg -l | grep -q "^ii  $pkg "; then
+            missing_packages+=("$pkg")
+        fi
+    done
+    
+    # Install missing packages
+    if [ ${#missing_packages[@]} -gt 0 ]; then
+        print_status "Installing missing packages: ${missing_packages[*]}"
+        apt update
+        apt install -y "${missing_packages[@]}" || {
+            print_warning "Some packages failed to install, continuing..."
+        }
+    else
+        print_status "All required system packages are already installed"
+    fi
+    
+    # Install Python packages
+    print_status "Installing Python packages..."
+    pip3 install --upgrade pip || print_warning "pip upgrade failed, continuing..."
+    pip3 install flask flask-cors || {
+        print_error "Failed to install Python packages"
+        exit 1
+    }
+}
+
+# Function to install browser
+install_browser() {
+    print_status "Checking for web browser..."
+    
+    # Check if any browser is installed
+    if command -v chromium-browser &> /dev/null; then
+        print_status "Chromium browser is already installed"
+        BROWSER_COMMAND="chromium-browser"
+    elif command -v chromium &> /dev/null; then
+        print_status "Chromium is already installed"
+        BROWSER_COMMAND="chromium"
+    elif command -v firefox &> /dev/null; then
+        print_status "Firefox is already installed"
+        BROWSER_COMMAND="firefox"
+    elif command -v firefox-esr &> /dev/null; then
+        print_status "Firefox ESR is already installed"
+        BROWSER_COMMAND="firefox-esr"
+    else
+        print_warning "No browser found, attempting to install..."
+        
+        # Try to install Chromium first
+        apt install -y chromium-browser chromium-codecs-ffmpeg 2>/dev/null || \
+        apt install -y chromium 2>/dev/null || \
+        apt install -y firefox-esr 2>/dev/null || {
+            print_error "Failed to install any browser automatically"
+            print_warning "Please install a browser manually (chromium or firefox)"
+            BROWSER_COMMAND="chromium-browser"  # Default fallback
+        }
+        
+        # Check again which browser was installed
+        if command -v chromium-browser &> /dev/null; then
+            BROWSER_COMMAND="chromium-browser"
+        elif command -v chromium &> /dev/null; then
+            BROWSER_COMMAND="chromium"
+        elif command -v firefox-esr &> /dev/null; then
+            BROWSER_COMMAND="firefox-esr"
+        else
+            BROWSER_COMMAND="chromium-browser"  # Default fallback
+        fi
+    fi
+    
+    print_info "Browser command: $BROWSER_COMMAND"
+}
+
 # Interactive configuration
 configure_installation() {
     echo ""
     print_info "=== Konfiguration der Installation ==="
+    print_info "Installationsbenutzer: $INSTALL_USER"
+    print_info "Home-Verzeichnis: $USER_HOME"
     echo ""
     
     # WiFi Config Port
@@ -115,81 +228,126 @@ configure_installation
 
 # Update system
 print_status "Updating system packages..."
-apt update
-apt upgrade -y
+apt update || {
+    print_warning "apt update failed, trying to continue..."
+}
 
 # Fix any broken packages first
 print_status "Fixing package dependencies..."
-apt --fix-broken install -y
-apt update
+apt --fix-broken install -y || true
+dpkg --configure -a || true
 
-# Install dependencies
-print_status "Installing required packages..."
-apt install -y python3-pip python3-flask python3-venv
+# Install required packages
+install_required_packages
 
-# Try to install Chromium, but don't fail if it's already installed
-print_status "Installing Chromium browser..."
-apt install -y chromium-browser chromium-codecs-ffmpeg || {
-    print_warning "Chromium installation failed, trying alternative method..."
-    # Try installing dependencies first
-    apt install -y libraspberrypi0 || true
-    apt install -y chromium-codecs-ffmpeg-extra || apt install -y chromium-codecs-ffmpeg || true
-    apt install -y chromium-browser || {
-        print_warning "Chromium might already be installed or needs manual installation"
-        # Check if Chromium is already available
-        if command -v chromium-browser &> /dev/null; then
-            print_status "Chromium browser is already installed"
-        else
-            print_error "Please install Chromium browser manually"
-        fi
-    }
-}
-
-# Install Python packages
-print_status "Installing Python dependencies..."
-pip3 install flask flask-cors
+# Install browser
+install_browser
 
 # Create directory structure
 print_status "Creating directory structure..."
-mkdir -p /home/pi/wifi-config
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$CONFIG_DIR"
+
+# Check if files exist in current directory
+if [ ! -f "index.html" ] || [ ! -f "wifi_config_server.py" ]; then
+    print_error "Required files not found in current directory!"
+    print_error "Please run this script from the piwlan directory"
+    exit 1
+fi
 
 # Update wifi_config_server.py with custom ports
 print_status "Configuring WiFi server with custom settings..."
-sed -i "s|FOTOBOX_URL = 'http://localhost:3353'|FOTOBOX_URL = '$FOTOBOX_URL'|g" wifi_config_server.py
-sed -i "s|app.run(host='0.0.0.0', port=5000|app.run(host='0.0.0.0', port=$WIFI_CONFIG_PORT|g" wifi_config_server.py
+cp wifi_config_server.py wifi_config_server.py.tmp
+sed -i "s|FOTOBOX_URL = 'http://localhost:3353'|FOTOBOX_URL = '$FOTOBOX_URL'|g" wifi_config_server.py.tmp
+sed -i "s|port=5000|port=$WIFI_CONFIG_PORT|g" wifi_config_server.py.tmp
+sed -i "s|int(os.environ.get('WIFI_CONFIG_PORT', 5000))|int(os.environ.get('WIFI_CONFIG_PORT', $WIFI_CONFIG_PORT))|g" wifi_config_server.py.tmp
 
 # Update check_connection.sh with custom URL
-sed -i "s|http://localhost:3353|$FOTOBOX_URL|g" check_connection.sh
+if [ -f "check_connection.sh" ]; then
+    cp check_connection.sh check_connection.sh.tmp
+    sed -i "s|http://localhost:3353|$FOTOBOX_URL|g" check_connection.sh.tmp
+else
+    print_warning "check_connection.sh not found, creating default version..."
+    cat > check_connection.sh.tmp << EOF
+#!/bin/bash
+# WiFi Connection Check Script
+FOTOBOX_URL="$FOTOBOX_URL"
+sleep 10
+if ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1; then
+    echo "Internet connection available - redirecting to photo booth"
+    sleep 5
+    pkill -f chromium
+    export DISPLAY=:0
+    $BROWSER_COMMAND --kiosk --noerrdialogs --disable-infobars \$FOTOBOX_URL &
+else
+    echo "No internet connection - staying on WiFi configuration"
+fi
+echo "\$(date): Connection check completed" >> /var/log/wifi-config-check.log
+EOF
+fi
 
 # Copy files
 print_status "Copying configuration files..."
-cp index.html /home/pi/wifi-config/
-cp wifi_config_server.py /home/pi/wifi-config/
-cp check_connection.sh /home/pi/wifi-config/
+cp index.html "$INSTALL_DIR/"
+cp wifi_config_server.py.tmp "$INSTALL_DIR/wifi_config_server.py"
+cp check_connection.sh.tmp "$INSTALL_DIR/check_connection.sh"
+
+# Copy debug script if exists
+if [ -f "debug_wifi_config.sh" ]; then
+    cp debug_wifi_config.sh "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/debug_wifi_config.sh"
+fi
+
+# Clean up temp files
+rm -f wifi_config_server.py.tmp check_connection.sh.tmp
 
 # Set permissions
 print_status "Setting file permissions..."
-chmod +x /home/pi/wifi-config/wifi_config_server.py
-chmod +x /home/pi/wifi-config/check_connection.sh
-chown -R pi:pi /home/pi/wifi-config
+chmod +x "$INSTALL_DIR/wifi_config_server.py"
+chmod +x "$INSTALL_DIR/check_connection.sh"
+chown -R $INSTALL_USER:$INSTALL_USER "$INSTALL_DIR"
 
-# Update service file with custom port
-print_status "Updating service configuration..."
-sed -i "s|http://localhost:5000|http://localhost:$WIFI_CONFIG_PORT|g" wifi-config.service
-
-# Create systemd service
+# Update service file with custom paths and port
 print_status "Creating systemd service..."
-cp wifi-config.service /etc/systemd/system/
+cat > wifi-config.service.tmp << EOF
+[Unit]
+Description=WiFi Configuration Web Interface for Raspberry Pi Fotobox
+After=network.target
+Wants=network.target
 
-# Create log directory
-mkdir -p /var/log
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+ExecStart=/usr/bin/python3 $INSTALL_DIR/wifi_config_server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/wifi-config.log
+StandardError=append:/var/log/wifi-config.log
+Environment="WIFI_CONFIG_PORT=$WIFI_CONFIG_PORT"
+
+# Security settings
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/wpa_supplicant /var/log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Install service
+cp wifi-config.service.tmp /etc/systemd/system/wifi-config.service
+rm wifi-config.service.tmp
+
+# Create log file
 touch /var/log/wifi-config.log
-chown pi:pi /var/log/wifi-config.log
+chown $INSTALL_USER:$INSTALL_USER /var/log/wifi-config.log
 
 # Configure autostart for kiosk mode
 print_status "Configuring kiosk mode..."
-AUTOSTART_FILE="/home/pi/.config/lxsession/LXDE-pi/autostart"
-mkdir -p "$(dirname "$AUTOSTART_FILE")"
+AUTOSTART_FILE="$CONFIG_DIR/autostart"
 
 # Backup existing autostart if it exists
 if [ -f "$AUTOSTART_FILE" ]; then
@@ -197,7 +355,7 @@ if [ -f "$AUTOSTART_FILE" ]; then
     print_warning "Backed up existing autostart configuration"
 fi
 
-# Create new autostart configuration with custom port
+# Create new autostart configuration
 cat > "$AUTOSTART_FILE" << EOF
 @lxpanel --profile LXDE-pi
 @pcmanfm --desktop --profile LXDE-pi
@@ -209,13 +367,13 @@ cat > "$AUTOSTART_FILE" << EOF
 @xset s noblank
 
 # Start WiFi configuration in kiosk mode
-@chromium-browser --kiosk --noerrdialogs --disable-infobars --check-for-update-interval=604800 http://localhost:$WIFI_CONFIG_PORT
+@$BROWSER_COMMAND --kiosk --noerrdialogs --disable-infobars http://localhost:$WIFI_CONFIG_PORT
 
 # Check connection after startup
-@/home/pi/wifi-config/check_connection.sh
+@$INSTALL_DIR/check_connection.sh
 EOF
 
-chown pi:pi "$AUTOSTART_FILE"
+chown $INSTALL_USER:$INSTALL_USER "$AUTOSTART_FILE"
 
 # Enable and start service
 print_status "Enabling and starting WiFi configuration service..."
@@ -226,58 +384,73 @@ systemctl start wifi-config.service
 # Configure firewall (if ufw is installed)
 if command -v ufw &> /dev/null; then
     print_status "Configuring firewall..."
-    ufw allow $WIFI_CONFIG_PORT/tcp comment 'WiFi Config'
+    ufw allow $WIFI_CONFIG_PORT/tcp comment 'WiFi Config' || true
     # Extract port from FOTOBOX_URL
     FOTOBOX_PORT=$(echo $FOTOBOX_URL | sed -e 's/.*://g' -e 's/\/.*//g')
     if validate_port "$FOTOBOX_PORT"; then
-        ufw allow $FOTOBOX_PORT/tcp comment 'Fotobox'
+        ufw allow $FOTOBOX_PORT/tcp comment 'Fotobox' || true
     fi
-    ufw --force enable
+    ufw --force enable || true
 fi
 
 # Create log rotation config
 print_status "Setting up log rotation..."
 cat > /etc/logrotate.d/wifi-config << EOF
-/var/log/wifi-config.log {
+/var/log/wifi-config.log
+/var/log/wifi-config-check.log
+{
     daily
     rotate 7
     compress
     delaycompress
     missingok
     notifempty
-    create 644 pi pi
+    create 644 $INSTALL_USER $INSTALL_USER
 }
 EOF
 
 # Create configuration summary file
 print_status "Creating configuration summary..."
-cat > /home/pi/wifi-config/config.txt << EOF
+cat > "$INSTALL_DIR/config.txt" << EOF
 WiFi Configuration Settings
 ===========================
+Installation User: $INSTALL_USER
+Installation Directory: $INSTALL_DIR
 WiFi Config Port: $WIFI_CONFIG_PORT
 WiFi Config URL: http://localhost:$WIFI_CONFIG_PORT
 Fotobox URL: $FOTOBOX_URL
+Browser Command: $BROWSER_COMMAND
 
 Service Commands:
 - Status: sudo systemctl status wifi-config.service
 - Restart: sudo systemctl restart wifi-config.service
 - Logs: sudo journalctl -u wifi-config.service -f
+- Debug: sudo $INSTALL_DIR/debug_wifi_config.sh
+
+File Locations:
+- HTML Interface: $INSTALL_DIR/index.html
+- Python Server: $INSTALL_DIR/wifi_config_server.py
+- Service File: /etc/systemd/system/wifi-config.service
+- Autostart: $AUTOSTART_FILE
 EOF
 
-chown pi:pi /home/pi/wifi-config/config.txt
+chown $INSTALL_USER:$INSTALL_USER "$INSTALL_DIR/config.txt"
 
 # Check service status
 print_status "Checking service status..."
+sleep 2
 if systemctl is-active --quiet wifi-config.service; then
     print_status "WiFi configuration service is running successfully!"
     echo ""
     print_info "=== Installation erfolgreich abgeschlossen! ==="
+    print_info "Benutzer: $INSTALL_USER"
+    print_info "Installationsverzeichnis: $INSTALL_DIR"
     print_info "WiFi-Konfiguration erreichbar unter: http://localhost:$WIFI_CONFIG_PORT"
     print_info "Fotobox wird weitergeleitet zu: $FOTOBOX_URL"
-    print_info "Konfiguration gespeichert in: /home/pi/wifi-config/config.txt"
+    print_info "Konfiguration gespeichert in: $INSTALL_DIR/config.txt"
 else
     print_error "Service failed to start. Check logs with: sudo journalctl -u wifi-config.service"
-    exit 1
+    print_info "You can also run the debug script: sudo $INSTALL_DIR/debug_wifi_config.sh"
 fi
 
 echo ""
