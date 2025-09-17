@@ -4,7 +4,7 @@ A modern, touch-friendly WiFi configuration interface for Raspberry Pi-based pho
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
-![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-5-red.svg)
+![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-Compatible-red.svg)
 
 ## 🌟 Features
 
@@ -17,28 +17,31 @@ A modern, touch-friendly WiFi configuration interface for Raspberry Pi-based pho
 - **No Keyboard Required**: Complete configuration through touch interface only
 - **Kiosk Mode Ready**: Designed to run in fullscreen kiosk mode
 - **Configurable Ports**: Customize WiFi config and photo booth ports during installation
+- **Multi-User Support**: Automatically detects and uses appropriate user (not limited to 'pi')
+- **Toggle Startup**: Enable/disable WiFi configuration at startup with simple commands
 
 ## 📸 Screenshots
 
 ### Connected State
 When already connected to WiFi, users see:
-- ✅ Connection status
-- Direct button to photo booth
+- ✅ Connection status with network name
+- Direct green button to photo booth
 - Option to change WiFi network
 
 ### Network Selection
 When not connected or changing networks:
-- List of available networks
-- Signal strength indicators
+- List of available networks with signal strength
+- Currently connected network highlighted
 - Password input with visibility toggle
+- Touch-friendly interface
 
 ## 📋 Prerequisites
 
-- Raspberry Pi 5 (or compatible model)
+- Raspberry Pi (any model with WiFi)
 - Raspberry Pi OS (Bullseye or newer)
 - Python 3.7+
-- Touchscreen display
-- Working photo booth application
+- Touchscreen display (optional but recommended)
+- Active photo booth application
 
 ## 🚀 Quick Start
 
@@ -56,7 +59,13 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-During installation, you'll be asked to configure:
+The installer will:
+- ✅ Detect your username automatically (works with any user, not just 'pi')
+- ✅ Install ALL required packages automatically
+- ✅ Find or install a compatible browser
+- ✅ Configure custom ports for WiFi config and photo booth
+
+During installation, you'll be asked:
 - WiFi configuration port (default: 5000)
 - Photo booth URL (default: http://localhost:3353)
 
@@ -66,25 +75,63 @@ During installation, you'll be asked to configure:
 sudo reboot
 ```
 
+## 🎯 Usage
+
+### Normal Operation
+
+1. **Power on** the Raspberry Pi
+2. **Connected State**: If already connected to WiFi:
+   - Shows current network name
+   - Green "Zur Fotobox →" button for direct access
+   - "Anderes WLAN wählen" to change networks
+3. **Not Connected**: If no WiFi connection:
+   - Shows available networks list
+   - Tap to select network
+   - Enter password if required
+   - Auto-redirect to photo booth after connection
+
+### Enable/Disable at Startup
+
+You can control whether the WiFi configuration loads at startup:
+
+**Quick Commands:**
+```bash
+# Disable WiFi config at startup (boot directly to desktop)
+sudo wifi-config-toggle
+
+# Or use one-line commands:
+# Disable
+sudo systemctl disable wifi-config.service && sudo sed -i 's|^@.*--kiosk.*localhost.*|#&|' ~/.config/lxsession/LXDE-pi/autostart
+
+# Enable
+sudo systemctl enable wifi-config.service && sudo sed -i 's|^#\(@.*--kiosk.*localhost.*\)|\1|' ~/.config/lxsession/LXDE-pi/autostart
+```
+
 ## 📦 Manual Installation
 
-If you prefer manual installation or need to customize the setup:
+<details>
+<summary>Click to expand manual installation steps</summary>
 
 ### Step 1: Install Dependencies
 
 ```bash
 sudo apt update
-sudo apt install -y python3-pip python3-flask
+sudo apt install -y python3 python3-pip git wget curl net-tools wireless-tools wpasupplicant dhcpcd5
 sudo pip3 install flask flask-cors
 ```
 
 ### Step 2: Copy Files
 
 ```bash
-sudo mkdir -p /home/pi/wifi-config
-sudo cp index.html /home/pi/wifi-config/
-sudo cp wifi_config_server.py /home/pi/wifi-config/
-sudo chmod +x /home/pi/wifi-config/wifi_config_server.py
+# Detect user
+INSTALL_USER=${SUDO_USER:-$(whoami)}
+USER_HOME=$(eval echo ~$INSTALL_USER)
+
+# Create directories
+sudo mkdir -p $USER_HOME/wifi-config
+sudo cp index.html $USER_HOME/wifi-config/
+sudo cp wifi_config_server.py $USER_HOME/wifi-config/
+sudo chmod +x $USER_HOME/wifi-config/wifi_config_server.py
 ```
 
 ### Step 3: Install Service
@@ -98,7 +145,7 @@ sudo systemctl start wifi-config.service
 
 ### Step 4: Configure Kiosk Mode
 
-Add to `/home/pi/.config/lxsession/LXDE-pi/autostart`:
+Add to `~/.config/lxsession/LXDE-pi/autostart`:
 
 ```bash
 @xset s off
@@ -107,41 +154,44 @@ Add to `/home/pi/.config/lxsession/LXDE-pi/autostart`:
 @chromium-browser --kiosk --noerrdialogs --disable-infobars http://localhost:5000
 ```
 
-## 🎯 Usage
-
-1. **Power on** the Raspberry Pi with the touchscreen attached
-2. **Connected State**: If already connected to WiFi, you'll see:
-   - Current WiFi network name
-   - Green "Go to Photo Booth" button
-   - Option to change WiFi network
-3. **Not Connected**: If not connected, you'll see:
-   - List of available WiFi networks
-   - Tap to select a network
-   - Enter password (if required)
-   - Automatic redirect to photo booth upon connection
+</details>
 
 ## 🔧 Configuration
 
-### Change Ports After Installation
+### Change Settings After Installation
 
-**WiFi Config Port:**
+The installation creates a configuration file at `~/wifi-config/config.txt` with all your settings.
+
+**Change WiFi Config Port:**
 ```bash
-sudo nano /home/pi/wifi-config/wifi_config_server.py
+sudo nano ~/wifi-config/wifi_config_server.py
 # Change: app.run(host='0.0.0.0', port=5000)
+sudo systemctl restart wifi-config.service
 ```
 
-**Photo Booth URL:**
+**Change Photo Booth URL:**
 ```bash
-sudo nano /home/pi/wifi-config/wifi_config_server.py
+sudo nano ~/wifi-config/wifi_config_server.py
 # Change: FOTOBOX_URL = 'http://localhost:3353'
 
-sudo nano /home/pi/wifi-config/check_connection.sh
+sudo nano ~/wifi-config/check_connection.sh
 # Change: FOTOBOX_URL="http://localhost:3353"
+
+sudo systemctl restart wifi-config.service
 ```
 
-After changes:
+### Startup Configuration
+
+**Install Toggle Script:**
 ```bash
-sudo systemctl restart wifi-config.service
+sudo cp wifi-config-toggle.sh /usr/local/bin/wifi-config-toggle
+sudo chmod +x /usr/local/bin/wifi-config-toggle
+```
+
+**Use Toggle Script:**
+```bash
+sudo wifi-config-toggle
+# Shows menu to enable/disable WiFi config at startup
 ```
 
 ### Customize UI Theme
@@ -152,60 +202,74 @@ Edit the CSS in `index.html`:
 /* Change gradient colors */
 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 
-/* Change accent color */
-border-color: #667eea;
-
 /* Change success color */
 background: #27ae60;
+
+/* Change button styles */
+border-radius: 10px;
 ```
 
 ## 🐛 Troubleshooting
 
-### Port Already in Use
+### Debug Tool
 
+The project includes a comprehensive debug tool:
+
+```bash
+sudo ~/wifi-config/debug_wifi_config.sh
+```
+
+Options:
+1. Stop service and kill all processes
+2. Change to different port (8080)
+3. Restart service
+4. Show full logs
+5. Test manual start
+
+### Common Issues
+
+**Port Already in Use:**
 ```bash
 # Check what's using the port
 sudo lsof -i :5000
 
-# Stop the service and kill processes
-sudo systemctl stop wifi-config.service
-sudo pkill -f wifi_config_server.py
-
-# Change to different port (e.g., 8080)
-sudo ./debug_wifi_config.sh
+# Use debug tool to change port
+sudo ~/wifi-config/debug_wifi_config.sh
+# Select option 2
 ```
 
-### No Networks Displayed
-
+**No Networks Displayed:**
 ```bash
 # Check WiFi interface
 sudo iwconfig
 
-# Check service logs
-sudo journalctl -u wifi-config.service -f
-
-# Check application logs
-sudo tail -f /var/log/wifi-config.log
-```
-
-### Connection Fails
-
-```bash
-# Check WPA supplicant
-sudo journalctl -u wpa_supplicant -f
-
 # Test manual scan
 sudo iwlist wlan0 scan
+
+# Check logs
+sudo journalctl -u wifi-config.service -f
 ```
 
-### Service Not Starting
+**Browser Not Found:**
+```bash
+# Install Chromium
+sudo apt install -y chromium-browser
 
+# Or Firefox ESR
+sudo apt install -y firefox-esr
+```
+
+**Service Not Starting:**
 ```bash
 # Check service status
 sudo systemctl status wifi-config.service
 
-# Run debug script
-sudo ./debug_wifi_config.sh
+# View detailed logs
+sudo tail -f /var/log/wifi-config.log
+
+# Try manual start
+cd ~/wifi-config
+sudo python3 wifi_config_server.py
 ```
 
 ## 📁 File Structure
@@ -214,46 +278,85 @@ sudo ./debug_wifi_config.sh
 piwlan/
 ├── README.md              # This file
 ├── LICENSE               # MIT License
-├── install.sh            # Automated installation script
-├── index.html            # WiFi configuration interface
-├── wifi_config_server.py # Backend server
+├── install.sh            # Smart installation script
+├── index.html            # Touch-optimized web interface
+├── wifi_config_server.py # Backend server with API
 ├── wifi-config.service   # Systemd service file
-├── check_connection.sh   # Connection check script
-├── debug_wifi_config.sh  # Debug and repair tool
+├── check_connection.sh   # Auto-redirect script
+├── debug_wifi_config.sh  # Debug and troubleshooting tool
+├── wifi-config-toggle.sh # Enable/disable startup tool
 └── .gitignore           # Git ignore file
 ```
-
-## 🛠️ Debug Tool
-
-The project includes a debug tool for troubleshooting:
-
-```bash
-sudo ./debug_wifi_config.sh
-```
-
-Options:
-1. Stop service and kill all processes
-2. Change to different port
-3. Restart service
-4. Show logs
-5. Test manual start
 
 ## 🔒 Security Considerations
 
 - WiFi passwords are stored in `/etc/wpa_supplicant/wpa_supplicant.conf`
 - Service runs with root privileges (required for network configuration)
-- Web interface is only accessible locally by default
-- Consider implementing authentication for production use
+- Web interface is localhost-only by default
+- Consider adding authentication for production deployments
+- Regular security updates recommended
 
 ## 📝 API Endpoints
 
-The backend provides these endpoints:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serves the web interface |
+| `/api/networks` | GET | Returns available WiFi networks |
+| `/api/connect` | POST | Connect to a network |
+| `/api/status` | GET | Get current connection status |
+| `/api/redirect` | GET | Redirect to photo booth URL |
 
-- `GET /` - Serves the web interface
-- `GET /api/networks` - Returns available WiFi networks
-- `POST /api/connect` - Connect to a network
-- `GET /api/status` - Get connection status
-- `GET /api/redirect` - Redirect to photo booth
+## 🛠️ Advanced Features
+
+### Multi-User Support
+
+The installation automatically detects and uses the appropriate user:
+- Works with default 'pi' user
+- Automatically uses current user if 'pi' doesn't exist
+- All paths adjusted dynamically
+
+### Browser Compatibility
+
+Supports multiple browsers (auto-detected):
+- Chromium Browser (preferred)
+- Chromium
+- Firefox ESR
+- Firefox
+
+### Package Management
+
+The installer automatically installs all required packages:
+- Python packages: flask, flask-cors
+- Network tools: wpasupplicant, wireless-tools, dhcpcd5
+- System tools: git, wget, curl, net-tools, lsof
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+### Development Setup
+
+```bash
+# Clone your fork
+git clone https://github.com/YOUR_USERNAME/piwlan.git
+cd piwlan
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install flask flask-cors
+
+# Run development server
+sudo python3 wifi_config_server.py
+```
 
 ## 📜 License
 
@@ -261,26 +364,44 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Designed specifically for touchscreen photo booth applications
+- Designed for the Raspberry Pi photo booth community
 - UI inspired by modern glassmorphism design trends
-- Built with Flask for simplicity and reliability
-- Special thanks to the Raspberry Pi photo booth community
+- Built with Flask for reliability and simplicity
+- Thanks to all contributors and testers
 
 ## 💬 Support
 
 For issues and questions:
 - Open an issue on [GitHub](https://github.com/DJTobi24/piwlan/issues)
 - Check existing issues for solutions
+- Use the debug tool for diagnostics
 - Review the troubleshooting section
 
-## 🚀 Future Plans
+## 🚀 Changelog
+
+### Latest Version
+- ✅ Multi-user support (not limited to 'pi' user)
+- ✅ Automatic package installation
+- ✅ Toggle WiFi config at startup
+- ✅ Improved debug tools
+- ✅ Browser auto-detection
+- ✅ Connected state with direct photo booth access
+
+### Previous Versions
+- Basic WiFi configuration
+- Touch interface
+- Kiosk mode support
+
+## 🔮 Future Plans
 
 - [ ] Multiple WiFi profile support
-- [ ] WiFi strength monitoring
+- [ ] WiFi strength monitoring  
 - [ ] Captive portal support
 - [ ] Multi-language support
 - [ ] Advanced network diagnostics
 - [ ] REST API authentication
+- [ ] Backup/restore configurations
+- [ ] QR code configuration
 
 ---
 
