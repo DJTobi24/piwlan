@@ -14,11 +14,13 @@ A modern, touch-friendly WiFi configuration interface for Raspberry Pi-based pho
 - **Connection Status**: Shows current WiFi connection with direct access to photo booth
 - **Secure Connection**: Supports WPA/WPA2 encrypted networks
 - **Automatic Redirect**: Redirects to photo booth application after successful connection
+- **Skip WiFi Option**: "Ohne WLAN fortfahren" button to bypass WiFi and go directly to photo booth
 - **No Keyboard Required**: Complete configuration through touch interface only
 - **Kiosk Mode Ready**: Designed to run in fullscreen kiosk mode
 - **Configurable Ports**: Customize WiFi config and photo booth ports during installation
 - **Multi-User Support**: Automatically detects and uses appropriate user (not limited to 'pi')
 - **Toggle Startup**: Enable/disable WiFi configuration at startup with simple commands
+- **Update Support**: Easy updates without losing your configuration
 
 ## 📸 Screenshots
 
@@ -33,6 +35,7 @@ When not connected or changing networks:
 - List of available networks with signal strength
 - Currently connected network highlighted
 - Password input with visibility toggle
+- "Ohne WLAN fortfahren" button to skip WiFi setup
 - Touch-friendly interface
 
 ## 📋 Prerequisites
@@ -75,6 +78,43 @@ During installation, you'll be asked:
 sudo reboot
 ```
 
+## 🔄 Updating an Existing Installation
+
+If you already have piwlan installed and want to update to the latest version:
+
+```bash
+# Navigate to your piwlan directory
+cd piwlan
+
+# Pull latest changes
+git pull
+
+# Run the installer - it will detect your existing installation
+sudo ./install.sh
+```
+
+The installer will:
+- ✅ Detect your existing installation automatically
+- ✅ Load your current configuration (port and URL)
+- ✅ Ask if you want to update
+- ✅ Create a timestamped backup of your old files
+- ✅ Update only the application files
+- ✅ Keep your existing configuration
+- ✅ No reboot required (service restarts automatically)
+
+**What you'll see:**
+```
+[*] Eine existierende Installation wurde gefunden in: /home/pi/wifi-config
+[i] Existierende Konfiguration gefunden:
+[i]   WiFi-Config Port: 5000
+[i]   Fotobox URL: http://localhost:3353
+
+Möchten Sie die Installation aktualisieren? (j/n) j
+Möchten Sie die Konfiguration ändern? (j/n) n
+```
+
+Your old files will be backed up to: `~/wifi-config/backup-YYYYMMDD-HHMMSS/`
+
 ## 🎯 Usage
 
 ### Normal Operation
@@ -89,6 +129,7 @@ sudo reboot
    - Tap to select network
    - Enter password if required
    - Auto-redirect to photo booth after connection
+   - **OR** tap "Ohne WLAN fortfahren" to skip WiFi and go directly to photo booth
 
 ### Enable/Disable at Startup
 
@@ -277,8 +318,9 @@ sudo python3 wifi_config_server.py
 ```
 piwlan/
 ├── README.md              # This file
+├── CLAUDE.md             # AI Assistant documentation
 ├── LICENSE               # MIT License
-├── install.sh            # Smart installation script
+├── install.sh            # Smart installation script with update support
 ├── index.html            # Touch-optimized web interface
 ├── wifi_config_server.py # Backend server with API
 ├── wifi-config.service   # Systemd service file
@@ -379,7 +421,13 @@ For issues and questions:
 
 ## 🚀 Changelog
 
-### Latest Version
+### Version 1.1 (Latest - 2025-11-17)
+- ✅ **"Ohne WLAN fortfahren" button** - Skip WiFi configuration and go directly to photo booth
+- ✅ **Update support** - Update existing installations without losing configuration
+- ✅ **Automatic backups** - Creates timestamped backups during updates
+- ✅ **Smart update mode** - Detects existing installations and preserves settings
+
+### Version 1.0
 - ✅ Multi-user support (not limited to 'pi' user)
 - ✅ Automatic package installation
 - ✅ Toggle WiFi config at startup
