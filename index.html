@@ -198,6 +198,53 @@
             cursor: not-allowed;
         }
 
+        .skip-wifi-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #667eea;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+        }
+
+        .skip-wifi-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .divider {
+            text-align: center;
+            margin: 25px 0 15px 0;
+            color: #999;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: #ddd;
+        }
+
+        .divider::before {
+            left: 0;
+        }
+
+        .divider::after {
+            right: 0;
+        }
+
         .spinner {
             display: inline-block;
             width: 20px;
@@ -426,7 +473,7 @@
         function displayNetworks() {
             const networkList = document.getElementById('networkList');
             networkList.innerHTML = '';
-            
+
             // Zeige aktuell verbundenes Netzwerk oben an (falls vorhanden)
             if (currentConnection) {
                 const connectedHeader = document.createElement('div');
@@ -436,7 +483,7 @@
                 `;
                 networkList.appendChild(connectedHeader);
             }
-            
+
             networks.forEach((network, index) => {
                 const networkItem = document.createElement('div');
                 networkItem.className = 'network-item';
@@ -444,7 +491,7 @@
                     networkItem.className += ' selected';
                 }
                 networkItem.onclick = () => selectNetwork(network, index);
-                
+
                 networkItem.innerHTML = `
                     <div class="network-info">
                         <svg class="signal-icon" viewBox="0 0 24 24">
@@ -459,9 +506,21 @@
                         </div>
                     </div>
                 `;
-                
+
                 networkList.appendChild(networkItem);
             });
+
+            // Füge Trennlinie und "Ohne WLAN fortfahren" Button hinzu
+            const divider = document.createElement('div');
+            divider.className = 'divider';
+            divider.textContent = 'oder';
+            networkList.appendChild(divider);
+
+            const skipButton = document.createElement('button');
+            skipButton.className = 'skip-wifi-btn';
+            skipButton.textContent = 'Ohne WLAN fortfahren';
+            skipButton.onclick = skipWifi;
+            networkList.appendChild(skipButton);
         }
 
         function selectNetwork(network, index) {
@@ -550,7 +609,12 @@
             }
         }
 
-        // Funktion wurde entfernt - nicht mehr benötigt
+        async function skipWifi() {
+            showStatus('Ohne WLAN fortfahren...', 'success');
+            setTimeout(() => {
+                window.location.href = '/api/redirect';
+            }, 500);
+        }
 
         function showStatus(message, type) {
             const statusElement = document.getElementById('statusMessage');

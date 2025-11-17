@@ -143,6 +143,7 @@ CHECK_CONNECTION_TIMEOUT = 30                       # Connection wait time (seco
 - `checkStatus()` - Polls `/api/status` for current connection state
 - `togglePasswordVisibility()` - Shows/hides password input
 - `refreshNetworks()` - Manual network list refresh
+- `skipWifi()` - **NEW**: Bypasses WiFi configuration, redirects directly to photo booth
 
 **Design Features**:
 - Touch-optimized with large buttons (48px+ height)
@@ -150,6 +151,7 @@ CHECK_CONNECTION_TIMEOUT = 30                       # Connection wait time (seco
 - Responsive mobile-first design
 - Gradient background (#667eea to #764ba2)
 - Accessible semantic HTML
+- **NEW**: "Ohne WLAN fortfahren" button with divider for skipping WiFi setup
 
 ### 3. install.sh (Installation Script)
 
@@ -169,44 +171,63 @@ USER_HOME=$(eval echo ~$INSTALL_USER)
 ```
 
 **Installation Flow**:
-1. **Interactive Configuration** (lines 170-216)
+1. **Check for Existing Installation** (NEW)
+   - Detects if installation already exists
+   - Loads existing configuration from config.txt
+   - Offers update mode with backup creation
+   - Skips package installation in update mode
+
+2. **Interactive Configuration** (lines 217-263)
    - WiFi config port (default: 5000)
    - Photo booth URL (default: http://localhost:3353)
    - Validation of port numbers and URLs
+   - Reuses existing config in update mode (optional change)
 
-2. **Package Installation** (lines 77-123)
+3. **Package Installation** (lines 77-123) - Skipped in update mode
    - Detects missing packages
    - Installs: python3, flask, wireless-tools, wpasupplicant, dhcpcd5, etc.
    - Handles broken dependencies automatically
 
-3. **Browser Detection** (lines 126-167)
+4. **Update Mode** (NEW, lines 196-214)
+   - Stops running service
+   - Creates timestamped backup of old files
+   - Preserves existing configuration
+   - Updates only application files
+
+5. **Browser Detection** (lines 126-167)
    - Auto-detects: chromium-browser, chromium, firefox-esr, firefox
    - Attempts installation if missing
    - Sets `$BROWSER_COMMAND` variable
 
-4. **File Customization** (lines 258-302)
+6. **File Customization** (lines 258-302)
    - Copies files to `~/wifi-config/`
    - Uses `sed` to replace default values:
      - Port numbers in Python file
      - URLs in Python and shell scripts
    - Creates customized systemd service
 
-5. **Service Setup** (lines 311-382)
+7. **Service Setup** (lines 311-382)
    - Generates systemd service with correct paths
    - Enables and starts service
    - Creates log files with proper ownership
 
-6. **Kiosk Mode Configuration** (lines 349-376)
+8. **Kiosk Mode Configuration** (lines 349-376)
    - Creates LXDE autostart configuration
    - Disables screen blanking (xset commands)
    - Launches browser in kiosk mode at boot
    - Adds connection check script to autostart
 
-7. **Finalization** (lines 397-466)
+9. **Finalization** (lines 397-562)
    - Configures log rotation
    - Creates configuration summary file
    - Verifies service startup
-   - Prompts for reboot
+   - **NEW**: Different messages for update vs fresh install
+   - **NEW**: Optional reboot (not required for updates)
+
+**New Functions** (lines 169-214):
+- `check_existing_installation()` - Detects existing installation
+- `load_existing_config()` - Loads port/URL from config.txt
+- `update_installation()` - Handles update mode with backup
 
 **Customization Points for Modifications**:
 - `DEFAULT_WIFI_CONFIG_PORT=5000` (line 16)
@@ -539,6 +560,35 @@ USER_HOME=$(eval echo ~$INSTALL_USER)
 
 ## Common Tasks for AI Assistants
 
+### Task 0: Update Existing Installation
+
+**Use Case**: Update installed version with new features while keeping configuration
+
+**Process**:
+```bash
+# Navigate to repository
+cd piwlan
+
+# Pull latest changes
+git pull
+
+# Run install script - it will detect existing installation
+sudo ./install.sh
+
+# Answer prompts:
+# "Möchten Sie die Installation aktualisieren?" -> j
+# "Möchten Sie die Konfiguration ändern?" -> n (unless you want to change port/URL)
+```
+
+**What happens**:
+1. Detects existing installation in `~/wifi-config/`
+2. Loads current port and URL from `config.txt`
+3. Stops service
+4. Creates timestamped backup in `~/wifi-config/backup-YYYYMMDD-HHMMSS/`
+5. Updates files with new versions
+6. Restarts service
+7. No reboot required
+
 ### Task 1: Change Default Port
 
 **Files to modify**:
@@ -609,10 +659,13 @@ async function callNewEndpoint() {
 - "Verbinden" → "Connect"
 - "Abbrechen" → "Cancel"
 - "Netzwerke werden geladen..." → "Loading networks..."
+- **"Ohne WLAN fortfahren"** → "Continue without WiFi"
+- **"oder"** → "or"
 
 **Also translate JavaScript messages**:
 - Search for `showMessage` calls
 - Update German error messages to English
+- Update `skipWifi()` status message
 
 ### Task 4: Add Support for 5GHz Networks
 
@@ -1181,6 +1234,7 @@ When modifying the codebase:
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 1.1
 **Last Updated**: 2025-11-17
-**Codebase Version**: Based on latest commit 24ce95b
+**Features Added**: Skip WiFi button, Update support
+**Codebase Version**: Current session
