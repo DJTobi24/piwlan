@@ -166,6 +166,53 @@ install_browser() {
     print_info "Browser command: $BROWSER_COMMAND"
 }
 
+# Check if already installed
+check_existing_installation() {
+    if [ -d "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/config.txt" ]; then
+        return 0  # Installation exists
+    else
+        return 1  # No installation found
+    fi
+}
+
+# Load existing configuration
+load_existing_config() {
+    if [ -f "$INSTALL_DIR/config.txt" ]; then
+        # Extract port from config.txt
+        WIFI_CONFIG_PORT=$(grep "WiFi Config Port:" "$INSTALL_DIR/config.txt" | awk '{print $4}')
+        FOTOBOX_URL=$(grep "Fotobox URL:" "$INSTALL_DIR/config.txt" | awk '{print $3}')
+
+        # Fallback to defaults if extraction failed
+        [ -z "$WIFI_CONFIG_PORT" ] && WIFI_CONFIG_PORT=$DEFAULT_WIFI_CONFIG_PORT
+        [ -z "$FOTOBOX_URL" ] && FOTOBOX_URL=$DEFAULT_FOTOBOX_URL
+
+        print_info "Existierende Konfiguration gefunden:"
+        print_info "  WiFi-Config Port: $WIFI_CONFIG_PORT"
+        print_info "  Fotobox URL: $FOTOBOX_URL"
+    fi
+}
+
+# Update existing installation
+update_installation() {
+    print_status "Aktualisiere existierende Installation..."
+
+    # Stop service first
+    print_status "Stoppe WiFi-Config Service..."
+    systemctl stop wifi-config.service 2>/dev/null || true
+
+    # Backup old files
+    BACKUP_DIR="$INSTALL_DIR/backup-$(date +%Y%m%d-%H%M%S)"
+    print_status "Erstelle Backup in $BACKUP_DIR..."
+    mkdir -p "$BACKUP_DIR"
+    cp "$INSTALL_DIR/index.html" "$BACKUP_DIR/" 2>/dev/null || true
+    cp "$INSTALL_DIR/wifi_config_server.py" "$BACKUP_DIR/" 2>/dev/null || true
+    cp "$INSTALL_DIR/check_connection.sh" "$BACKUP_DIR/" 2>/dev/null || true
+
+    # Update files
+    print_status "Aktualisiere Dateien..."
+    return 0
+}
+
 # Interactive configuration
 configure_installation() {
     echo ""
@@ -173,7 +220,7 @@ configure_installation() {
     print_info "Installationsbenutzer: $INSTALL_USER"
     print_info "Home-Verzeichnis: $USER_HOME"
     echo ""
-    
+
     # WiFi Config Port
     while true; do
         read -p "Port für WiFi-Konfiguration (Standard: $DEFAULT_WIFI_CONFIG_PORT): " input_port
@@ -187,7 +234,7 @@ configure_installation() {
             print_error "Ungültiger Port. Bitte eine Zahl zwischen 1 und 65535 eingeben."
         fi
     done
-    
+
     # Fotobox URL
     while true; do
         read -p "URL der Fotobox-Oberfläche (Standard: $DEFAULT_FOTOBOX_URL): " input_url
@@ -201,13 +248,13 @@ configure_installation() {
             print_error "Ungültige URL. Format: http://host:port oder https://host:port"
         fi
     done
-    
+
     echo ""
     print_info "Konfiguration:"
     print_info "  WiFi-Config Port: $WIFI_CONFIG_PORT"
     print_info "  Fotobox URL: $FOTOBOX_URL"
     echo ""
-    
+
     read -p "Sind diese Einstellungen korrekt? (j/n) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Jj]$ ]]; then
@@ -223,25 +270,54 @@ fi
 
 print_status "Starting Raspberry Pi Fotobox WiFi Configuration installation..."
 
-# Run interactive configuration
-configure_installation
+# Check if already installed
+if check_existing_installation; then
+    echo ""
+    print_warning "Eine existierende Installation wurde gefunden in: $INSTALL_DIR"
+    load_existing_config
+    echo ""
+    read -p "Möchten Sie die Installation aktualisieren? (j/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Jj]$ ]]; then
+        UPDATE_MODE=true
+        print_info "Update-Modus aktiviert - verwende existierende Konfiguration"
+        echo ""
+        read -p "Möchten Sie die Konfiguration ändern? (j/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Jj]$ ]]; then
+            configure_installation
+        fi
+    else
+        print_error "Installation abgebrochen."
+        exit 0
+    fi
+else
+    UPDATE_MODE=false
+    # Run interactive configuration
+    configure_installation
+fi
 
-# Update system
-print_status "Updating system packages..."
-apt update || {
-    print_warning "apt update failed, trying to continue..."
-}
+# Update mode: Stop service and create backup
+if [ "$UPDATE_MODE" = true ]; then
+    update_installation
+else
+    # Update system
+    print_status "Updating system packages..."
+    apt update || {
+        print_warning "apt update failed, trying to continue..."
+    }
 
-# Fix any broken packages first
-print_status "Fixing package dependencies..."
-apt --fix-broken install -y || true
-dpkg --configure -a || true
+    # Fix any broken packages first
+    print_status "Fixing package dependencies..."
+    apt --fix-broken install -y || true
+    dpkg --configure -a || true
 
-# Install required packages
-install_required_packages
+    # Install required packages
+    install_required_packages
 
-# Install browser
-install_browser
+    # Install browser
+    install_browser
+fi
 
 # Create directory structure
 print_status "Creating directory structure..."
@@ -442,7 +518,15 @@ sleep 2
 if systemctl is-active --quiet wifi-config.service; then
     print_status "WiFi configuration service is running successfully!"
     echo ""
-    print_info "=== Installation erfolgreich abgeschlossen! ==="
+    if [ "$UPDATE_MODE" = true ]; then
+        print_info "=== Update erfolgreich abgeschlossen! ==="
+        print_info "Die Installation wurde aktualisiert."
+        if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+            print_info "Backup der alten Dateien: $BACKUP_DIR"
+        fi
+    else
+        print_info "=== Installation erfolgreich abgeschlossen! ==="
+    fi
     print_info "Benutzer: $INSTALL_USER"
     print_info "Installationsverzeichnis: $INSTALL_DIR"
     print_info "WiFi-Konfiguration erreichbar unter: http://localhost:$WIFI_CONFIG_PORT"
@@ -454,13 +538,25 @@ else
 fi
 
 echo ""
-print_warning "Please reboot your Raspberry Pi to start using the WiFi configuration interface"
-print_warning "Run: sudo reboot"
+if [ "$UPDATE_MODE" = true ]; then
+    print_info "Hinweis: Das Update wurde abgeschlossen. Der Service wurde neu gestartet."
+    print_info "Sie können die Änderungen sofort nutzen (kein Neustart erforderlich)."
+    echo ""
+    read -p "Möchten Sie trotzdem neu starten? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_status "Rebooting..."
+        reboot
+    fi
+else
+    print_warning "Please reboot your Raspberry Pi to start using the WiFi configuration interface"
+    print_warning "Run: sudo reboot"
 
-# Optional: Ask if user wants to reboot now
-read -p "Do you want to reboot now? (y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    print_status "Rebooting..."
-    reboot
+    # Optional: Ask if user wants to reboot now
+    read -p "Do you want to reboot now? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_status "Rebooting..."
+        reboot
+    fi
 fi
